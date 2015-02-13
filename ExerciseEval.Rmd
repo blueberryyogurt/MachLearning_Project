@@ -1,0 +1,128 @@
+---
+title: "How well did you exercise?"
+output: html_document
+---
+`r library(caret)`
+`r library(dplyr)`
+
+### Summary 
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal is to build a model that uses data from accelerometers on the belt, forearm, arm, and dumbell to predict how well an exercise is being performed. Using data from six participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways, we apply a random forest algorithm to construct a model that predicts which of the 5 ways an exercise is being done. Using cross validation, we estimate our out-of-sample accuracy to be about 0.993.
+
+### Processing the data
+
+The data that is provided has previously been split into training and testing sets. After loading the training data, we perform the following steps: 
+
+1. We first remove the variables recording username and time, as it doesn't make sense to include these in our model. 
+
+2. Next, we remove all variables that have variance close to zero. 
+
+3. Finally, a quick check reveals that each remaining variable either has zero missing values or has greater than 95% missing values. Therefore, it makes sense to remove variables in the latter category to obtain a dataset with no missing values. 
+
+The code for these steps can be found in the appendix. 
+
+### Choosing a model
+
+
+ Our method of selecting a model will be as follows: fix pre-processing methods, use 10-fold cross-validation to train and evaluate three basic machine learning algorithms, and then choose the resulting model with the highest accuracy. Our primary pre-processing method is Principle Component Analysis (PCA). We also ask our models to pre-process with knnImpute to anticipate missing values when predicting, but we note that we are only predicting with variables that have no missing values in the training set. We analyze the following algorithms: naive Bayes (`method = "nb"`), random forest (`method = "rf"`), and multinomial logical regression (`method = "multinom"`). Note that we set the same seed before training each model to ensure that the same folds are being used when estimating the accuracy of each (i.e. so that one model doesn't appear better than the other because it was accidentically built on a more homogenous collection of folds). This results in the following three models: 
+ 
+```{r cache = TRUE, echo = FALSE, results = 'hide', message= FALSE, warning = FALSE}
+
+# load the training data
+train <- read.csv('pml-training.csv')
+
+# remove obviously unnecessary variables
+keep <- !(names(train) %in% c("user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp"))
+trainProc <- train[, keep]
+
+# remove variables with near zero variance
+trainProc <- trainProc[, -nearZeroVar(trainProc)]
+
+#test each variable to determine the percentage of missing values
+missingPerc <- c()
+for (i in 1:ncol(trainProc)){
+  missingPerc <- c(missingPerc, sum(is.na(trainProc[, i])))
+}
+missingPerc <- missingPerc/nrow(trainProc)
+
+#remove variables that have more than 95% missing values
+good <- missingPerc <= .95
+trainProc <- trainProc[, good]
+
+#notice that we no longer have any missing values
+sum(is.na(trainProc))
+```
+
+```{r cache = TRUE, echo = FALSE, results = 'hide', message= FALSE, warning = FALSE}
+#setup cross validation
+trainCont <- trainControl(method="cv", number = 10)
+
+#train each model using PCA to pre-process the data
+set.seed(1000)
+bayes <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "nb")
+```
+
+```{r cache = TRUE, echo = FALSE, results = 'hide', message= FALSE, warning = FALSE}
+set.seed(1000)
+forest <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "rf")
+```
+
+```{r cache = TRUE, echo = FALSE, results = 'hide', message= FALSE, warning = FALSE}
+set.seed(1000)
+multinom <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "multinom")
+```
+
+```{r cache = TRUE, echo=FALSE}
+bayes
+forest
+multinom
+```
+
+The code used to construct these models can be found in the appendix. It's immediately clear that the random forest algorithm produced the best model. Additionally, this model has very high expected out-of-sample accuracy equal to 0.9931194. This value is estimated by averaging the out-of-sample accuracies accross the 10 models created during cross validation. Since these 10 accuracies have a low standard of deviation equal to .001851424, we can expect the out-of-sample accuracy to be quite close to our estimate. *Therefore, we select the model above that resulted from the random forest algorithm.*
+
+### Appendix: Code
+
+```{r eval = FALSE}
+
+library(caret)
+library(dplyr)
+
+# load the training data
+train <- read.csv('pml-training.csv')
+
+# remove obviously unnecessary variables
+keep <- !(names(train) %in% c("user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp"))
+trainProc <- train[, keep]
+
+# remove variables with near zero variance
+trainProc <- trainProc[, -nearZeroVar(trainProc)]
+
+#test each variable to determine the percentage of missing values
+missingPerc <- c()
+for (i in 1:ncol(trainProc)){
+  missingPerc <- c(missingPerc, sum(is.na(trainProc[, i])))
+}
+missingPerc <- missingPerc/nrow(trainProc)
+
+#remove variables that have more than 95% missing values
+good <- missingPerc <= .95
+trainProc <- trainProc[, good]
+
+#notice that we no longer have any missing values
+sum(is.na(trainProc))
+
+
+#setup cross validation
+trainCont <- trainControl(method="cv", number = 10)
+
+#train each model using PCA to pre-process the data
+set.seed(1000)
+bayes <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "nb")
+
+set.seed(1000)
+forest <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "rf")
+
+set.seed(1000)
+multinom <- train(classe~., data = trainProc, preProcess = c("knnImpute", "pca"), trControl = trainCont, method = "multinom")
+
+```
